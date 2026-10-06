@@ -62,10 +62,12 @@ def main():
     report = artifact(review, "omg.review.report_path", "omg.review.v1", "review.json")
     decision = artifact(synthesis, "omg.review.synthesis_path", "omg.review-synthesis.v1", "synthesis.json")
     result = artifact(fix, "omg.review.fix_path", "omg.review-fix.v1", "fix.json")
+    review_path = review["metadata"]["omg.review.report_path"]
+    portable_review_path = f"docs/tasks/{source_id}/review/attempt-{attempt}/review.json"
     if (report.get("review_step_id") != review["id"]
             or decision.get("review_step_id") != review["id"]
             or decision.get("synthesis_step_id") != synthesis["id"]
-            or decision.get("review_report_path") != review["metadata"]["omg.review.report_path"]
+            or decision.get("review_report_path") not in (review_path, portable_review_path)
             or decision.get("verdict") != report.get("verdict")):
         raise ValueError("synthesis does not match this attempt's review")
     if (result.get("synthesis_step_id") != synthesis["id"]

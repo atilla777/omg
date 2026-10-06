@@ -1,5 +1,5 @@
 formula = "omg-development"
-description = "Prepare, plan, implement, document and review one existing omg-development source bead"
+description = "Prepare, plan, implement, review and publish one existing omg-development source bead"
 
 [requires]
 formula_compiler = ">=2.0.0"
@@ -73,5 +73,19 @@ metadata = { "gc.run_target" = "omg.build-worker" }
 id = "finalize"
 title = "Summarize reviewed development for {{source_id}}"
 needs = ["review-loop"]
-description = "Load skill omg-dev-finalize. Only after current review approval, summarize attempts, artifacts and remaining review/publishing work without closing the source or publishing."
+description = "Load skill omg-dev-finalize. Only after current review approval, summarize attempts and create a file snapshot for publication. Do not close the source or publish."
 metadata = { "gc.run_target" = "omg.build-worker" }
+
+[[steps]]
+id = "publish"
+title = "Publish reviewed source {{source_id}} to origin/main"
+needs = ["finalize"]
+description = "Load skill omg-dev-publish. Verify approval, the finalized snapshot and remote main; publish this one source without force. Record and confirm the remote/local commit before closing this step. On error leave it open."
+metadata = { "gc.run_target" = "omg.publish-worker" }
+
+[[steps]]
+id = "close-source"
+title = "Close published source {{source_id}}"
+needs = ["publish"]
+description = "Load skill omg-dev-close-source. Independently verify the published SHA in origin/main, local main and source artifacts; close only the original source bead and then this step."
+metadata = { "gc.run_target" = "omg.publish-worker" }
