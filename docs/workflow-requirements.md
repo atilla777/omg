@@ -49,4 +49,4 @@
 
 См. [документацию Gas City о Beads и маршрутизации](https://github.com/gastownhall/gascity/blob/main/docs/tutorials/06-beads.md), [формулах v2](https://github.com/gastownhall/gascity/blob/main/docs/guides/understanding-formulas.md) и [провайдере Herdr](https://github.com/gastownhall/gascity/blob/main/docs/reference/herdr-provider.md).
 
-Практические наблюдения по совместимости версий, импорту pack, OpenCode/Herdr и связи исходной задачи с workflow приведены в [проверке основы Gas City и Beads](gas-city-probe.md).
+Практические наблюдения по совместимости версий, импорту pack, OpenCode/Herdr и связи исходной задачи с workflow приведены в [проверке основы Gas City и Beads](gas-city-probe.md). Текущая диагностическая реализация ручного запуска и восстановления связи описана в [контрактах pack](pack-contracts.md#ручной-запуск-и-обзор-plan-010); формулы исполнения реальных задач пока отсутствуют.

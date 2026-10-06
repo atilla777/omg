@@ -1,0 +1,22 @@
+formula = "omg-probe"
+description = "Read-only dispatch and workflow observation probe for an omg-probe source bead"
+
+[requires]
+formula_compiler = ">=2.0.0"
+
+[vars.source_id]
+description = "Existing omg-probe source bead in the selected rig"
+required = true
+
+[[steps]]
+id = "inspect"
+title = "Inspect source {{source_id}}"
+description = "Read source bead {{source_id}} in the selected rig. Report its title, type and status on this step, then close only this step. Do not edit project files or close the source bead."
+metadata = { "gc.run_target" = "omg.probe-worker" }
+
+[[steps]]
+id = "confirm"
+title = "Confirm probe for {{source_id}}"
+description = "Read the inspect step's result and source bead {{source_id}}. Report whether the IDs and type match; close only this step. Do not edit project files or close the source bead."
+needs = ["inspect"]
+metadata = { "gc.run_target" = "omg.probe-worker" }
