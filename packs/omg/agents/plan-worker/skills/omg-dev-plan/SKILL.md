@@ -1,10 +1,10 @@
 ---
 name: omg-dev-plan
-description: Produce the technical implementation plan for a prepared OMG development source bead.
+description: Write a technical plan for an OMG development task in its prepared worktree.
 ---
 
-# Technical plan
+# Plan implementation
 
-1. Claim and inspect the assigned `omg-development.plan` step and its root in the selected rig using `bd -C <rig-path>`. Read the `prepare` blocker through `bd -C <rig-path> dep list <step-id> --type blocks --json`; require its closed result and matching `gc.root_bead_id`. Verify the root's `gc.var.source_id` and read the exact source and the prepare notes. Open `context.md` at the path recorded there; verify branch, source ID and root against Beads and the actual worktree via root metadata. Use the worktree, not the city or rig main worktree.
-2. Read the source's acceptance criteria and referenced requirements in the rig (if any), inspect relevant project code, then write `docs/tasks/<source-id>/implementation-plan.md` in the prepared worktree. Include the intended change, rig-relative affected files, decisions/risks, relevant test commands and their expected outcomes, and the relationship to each acceptance criterion. Use only portable rig-relative paths in the file; absolute worktree paths belong in Beads notes. Do not implement code in this step. Ask the user in the Herdr session if a design decision is blocked.
-3. Record the plan path and a concise plan summary in this step's notes. Read the plan back, verify it belongs to this source and worktree, set `gc.outcome=pass` and close only the plan step. On missing context or incomplete plan, record the blocker and leave it open.
+1. Claim `omg-development.plan` and inspect its closed prepare blocker through `bd -C <rig-path> dep list <step-id> --type blocks --json`. Require a matching `gc.root_bead_id`, source ID from the root's `gc.var.source_id`, and the prepared `omg.workspace.path`. For new runs require `omg.workspace.artifacts_root` too. Verify the recorded `context.md`, branch and worktree. Older roots without `omg.workspace.artifacts_root` use the path recorded in prepare notes under `docs/tasks/<source-id>/`; never silently switch an active run.
+2. Read source acceptance criteria and its linked rig requirements (if any). Resolve `implementation-plan.md` with the pack's `assets/scripts/task_workspace.py` (`--worktree <worktree> --task <source-id> artifact implementation-plan.md`) for new roots; for an older run use its prepared artifact directory. Write the intended changes, rig-relative affected files, decisions, test commands and expected outcomes, and coverage of each criterion. Do not implement here. Ask the human in Herdr if blocked.
+3. Record the exact plan path and a concise summary in this bead's notes. Read the file back, set `gc.outcome=pass` and close only plan when complete; otherwise leave it open with the reason.

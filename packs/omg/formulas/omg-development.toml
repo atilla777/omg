@@ -70,22 +70,8 @@ needs = ["synthesize-review"]
 metadata = { "gc.run_target" = "omg.build-worker" }
 
 [[steps]]
-id = "finalize"
-title = "Summarize reviewed development for {{source_id}}"
-needs = ["review-loop"]
-description = "Load skill omg-dev-finalize. Only after current review approval, summarize attempts and create a file snapshot for publication. Do not close the source or publish."
-metadata = { "gc.run_target" = "omg.build-worker" }
-
-[[steps]]
 id = "publish"
-title = "Publish reviewed source {{source_id}} to origin/main"
-needs = ["finalize"]
-description = "Load skill omg-dev-publish. Verify approval, the finalized snapshot and remote main; publish this one source without force. Record and confirm the remote/local commit before closing this step. On error leave it open."
-metadata = { "gc.run_target" = "omg.publish-worker" }
-
-[[steps]]
-id = "close-source"
-title = "Close published source {{source_id}}"
-needs = ["publish"]
-description = "Load skill omg-dev-close-source. Independently verify the published SHA in origin/main, local main and source artifacts; close only the original source bead and then this step."
+title = "Publish and close reviewed source {{source_id}}"
+needs = ["review-loop"]
+description = "Load skill omg-dev-publish. Verify the current approval and reviewed files, publish the task to origin/main without force, confirm remote/local main, then close the original source and this step. On any failure leave the source and step open."
 metadata = { "gc.run_target" = "omg.publish-worker" }

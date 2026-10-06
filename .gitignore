@@ -6,3 +6,6 @@
 # Editor and OS files
 .DS_Store
 *.swp
+
+# Task-local operational workspace (also ignored in each connected rig)
+/.omg/

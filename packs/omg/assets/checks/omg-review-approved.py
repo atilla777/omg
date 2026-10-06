@@ -3,9 +3,13 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from task_workspace import TaskWorkspace
 
 
 def read_json(command):
@@ -27,7 +31,12 @@ def main():
     root = one(read_json(["bd", "-C", store, "show", root_id, "--json"]))
     source_id = root["metadata"]["gc.var.source_id"]
     worktree = Path(root["metadata"]["omg.workspace.path"]).resolve()
-    attempt_dir = worktree / "docs" / "tasks" / source_id / "review" / f"attempt-{attempt}"
+    workspace = TaskWorkspace(worktree, source_id)
+    # Existing runs have no artifacts_root metadata and retain their recorded paths.
+    legacy = "omg.workspace.artifacts_root" not in root["metadata"]
+    attempt_dir = (worktree / "docs" / "tasks" / source_id / "review" / f"attempt-{attempt}") if legacy else workspace.artifact_path(f"review/attempt-{attempt}")
+    if not legacy and Path(root["metadata"]["omg.workspace.artifacts_root"]).resolve() != workspace.artifacts_root():
+        raise ValueError("task artifacts root does not match prepared worktree")
     members = read_json([
         "bd", "-C", store, "list", "--all", "--include-infra",
         "--metadata-field", f"gc.root_bead_id={root_id}", "--limit", "0", "--json",
@@ -60,10 +69,16 @@ def main():
         return data
 
     report = artifact(review, "omg.review.report_path", "omg.review.v1", "review.json")
+    if not legacy:
+        markdown_path = workspace.attempt_path(int(attempt), "review.md")
+        if (Path(review["metadata"].get("omg.review.markdown_path", "")).resolve() != markdown_path
+                or report.get("markdown_report_path") != str(markdown_path.relative_to(worktree))
+                or not markdown_path.is_file() or not markdown_path.read_text().strip()):
+            raise ValueError("missing or mismatched human-readable review report")
     decision = artifact(synthesis, "omg.review.synthesis_path", "omg.review-synthesis.v1", "synthesis.json")
     result = artifact(fix, "omg.review.fix_path", "omg.review-fix.v1", "fix.json")
     review_path = review["metadata"]["omg.review.report_path"]
-    portable_review_path = f"docs/tasks/{source_id}/review/attempt-{attempt}/review.json"
+    portable_review_path = (f"docs/tasks/{source_id}/review/attempt-{attempt}/review.json" if legacy else f".omg/tasks/{source_id}/artifacts/review/attempt-{attempt}/review.json")
     if (report.get("review_step_id") != review["id"]
             or decision.get("review_step_id") != review["id"]
             or decision.get("synthesis_step_id") != synthesis["id"]
@@ -77,6 +92,17 @@ def main():
     if decision.get("verdict") == "approved" and result["status"] == "no_op":
         if report.get("findings") or decision.get("required_fixes"):
             raise ValueError("approval still contains required findings")
+        if not legacy:
+            files = report.get("reviewed_files")
+            if (not isinstance(files, dict) or not files or any(
+                not isinstance(name, str) or not name or Path(name).is_absolute()
+                or any(part in (".", "..") for part in Path(name).parts)
+                or name.startswith((".omg/", "docs/tasks/"))
+                or (digest is not None and (not isinstance(digest, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", digest)))
+                for name, digest in files.items()
+            )):
+                raise ValueError("approved review lacks a valid reviewed_files snapshot")
         print(f"review attempt {attempt} approved")
         return 0
     if decision.get("verdict") == "changes_required" and result["status"] == "applied":
