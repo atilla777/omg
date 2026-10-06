@@ -1,0 +1,10 @@
+[pack]
+name = "omg"
+version = "0.1.0"
+schema = 2
+description = "OMG conversational entrypoint scaffold"
+
+[[named_session]]
+template = "orchestrator"
+scope = "city"
+mode = "always"
