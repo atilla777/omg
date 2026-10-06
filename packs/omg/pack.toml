@@ -2,7 +2,7 @@
 name = "omg"
 version = "0.1.0"
 schema = 2
-description = "OMG conversational requirements entrypoint"
+description = "OMG conversational requirements and Beads decomposition"
 
 [[named_session]]
 template = "orchestrator"
