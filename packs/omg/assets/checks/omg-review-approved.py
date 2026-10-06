@@ -8,9 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from task_workspace import TaskWorkspace
-
 
 def read_json(command):
     return json.loads(subprocess.check_output(command, text=True))
@@ -30,13 +27,28 @@ def main():
     root_id = control["metadata"]["gc.root_bead_id"]
     root = one(read_json(["bd", "-C", store, "show", root_id, "--json"]))
     source_id = root["metadata"]["gc.var.source_id"]
-    worktree = Path(root["metadata"]["omg.workspace.path"]).resolve()
-    workspace = TaskWorkspace(worktree, source_id)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", source_id) or source_id in (".", ".."):
+        raise ValueError("unsafe source ID")
+    recorded_worktree = Path(root["metadata"]["omg.workspace.path"])
+    if not recorded_worktree.is_absolute() or not recorded_worktree.is_dir() or recorded_worktree.resolve() != recorded_worktree:
+        raise ValueError("invalid recorded worktree")
+    worktree = recorded_worktree
     # Existing runs have no artifacts_root metadata and retain their recorded paths.
     legacy = "omg.workspace.artifacts_root" not in root["metadata"]
-    attempt_dir = (worktree / "docs" / "tasks" / source_id / "review" / f"attempt-{attempt}") if legacy else workspace.artifact_path(f"review/attempt-{attempt}")
-    if not legacy and Path(root["metadata"]["omg.workspace.artifacts_root"]).resolve() != workspace.artifacts_root():
-        raise ValueError("task artifacts root does not match prepared worktree")
+    if not attempt.isdecimal() or int(attempt) < 1:
+        raise ValueError("invalid review attempt")
+    if legacy:
+        artifacts_root = worktree / "docs" / "tasks" / source_id
+    else:
+        if root["metadata"].get("omg.workspace.source_id") != source_id:
+            raise ValueError("prepared source ID does not match workflow")
+        artifacts_root = Path(root["metadata"]["omg.workspace.artifacts_root"])
+        if (not artifacts_root.is_absolute() or artifacts_root != worktree / ".omg" / "tasks" / source_id / "artifacts"
+                or artifacts_root.resolve() != artifacts_root):
+            raise ValueError("task artifacts root does not match prepared worktree")
+    attempt_dir = artifacts_root / "review" / f"attempt-{attempt}"
+    if attempt_dir.resolve() != attempt_dir or not attempt_dir.is_relative_to(worktree):
+        raise ValueError("review attempt escapes prepared worktree")
     members = read_json([
         "bd", "-C", store, "list", "--all", "--include-infra",
         "--metadata-field", f"gc.root_bead_id={root_id}", "--limit", "0", "--json",
@@ -59,8 +71,8 @@ def main():
     fix = member("apply-fixes")
 
     def artifact(bead, key, schema, filename):
-        path = Path(bead["metadata"][key]).resolve()
-        if path != attempt_dir / filename:
+        path = Path(bead["metadata"][key])
+        if path != attempt_dir / filename or path.resolve() != path or not path.is_file():
             raise ValueError(f"{schema} must be in this attempt's worktree directory")
         data = json.loads(path.read_text())
         if (data.get("schema"), str(data.get("attempt")), data.get("source_id"),
@@ -70,8 +82,9 @@ def main():
 
     report = artifact(review, "omg.review.report_path", "omg.review.v1", "review.json")
     if not legacy:
-        markdown_path = workspace.attempt_path(int(attempt), "review.md")
-        if (Path(review["metadata"].get("omg.review.markdown_path", "")).resolve() != markdown_path
+        markdown_path = attempt_dir / "review.md"
+        if (Path(review["metadata"].get("omg.review.markdown_path", "")) != markdown_path
+                or markdown_path.resolve() != markdown_path
                 or report.get("markdown_report_path") != str(markdown_path.relative_to(worktree))
                 or not markdown_path.is_file() or not markdown_path.read_text().strip()):
             raise ValueError("missing or mismatched human-readable review report")
