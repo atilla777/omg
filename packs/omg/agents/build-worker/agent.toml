@@ -1,0 +1,5 @@
+scope = "city"
+provider = "opencode"
+session = "tmux"
+work_dir = ".gc/agents/omg-build-worker"
+max_active_sessions = 1

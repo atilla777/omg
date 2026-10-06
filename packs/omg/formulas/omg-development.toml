@@ -1,0 +1,77 @@
+formula = "omg-development"
+description = "Prepare, plan, implement, document and review one existing omg-development source bead"
+
+[requires]
+formula_compiler = ">=2.0.0"
+
+[vars.source_id]
+description = "Existing omg-development source bead in the selected rig"
+required = true
+
+[[steps]]
+id = "prepare"
+title = "Prepare development workspace for {{source_id}}"
+description = "Load skill omg-dev-prepare. Resolve the selected rig and verify the source bead {{source_id}} and this workflow; prepare its dedicated branch, worktree and artifact directory. Record the resolved paths on this step. Stop open on ambiguity or failure."
+metadata = { "gc.run_target" = "omg.plan-worker" }
+
+[[steps]]
+id = "plan"
+title = "Plan implementation of {{source_id}}"
+description = "Load skill omg-dev-plan. Read the prepare step notes and the source's requirements; write the technical plan in the prepared worktree and record its path on this step. Stop open if inputs or plan are missing."
+needs = ["prepare"]
+metadata = { "gc.run_target" = "omg.plan-worker" }
+
+[[steps]]
+id = "implement"
+title = "Implement and test {{source_id}}"
+description = "Load skill omg-dev-implement. Read the prepare and plan results from this workflow and the plan artifact. Implement the source task in its worktree, run relevant tests, record evidence and the changed-file summary on this step. Stop open on failed checks."
+needs = ["plan"]
+metadata = { "gc.run_target" = "omg.build-worker" }
+
+[[steps]]
+id = "document"
+title = "Update documentation for {{source_id}}"
+description = "Load skill omg-dev-document. Read the previous step results and artifacts from this workflow; update project documentation for the implemented behavior and record the result on this step. Stop open on missing inputs or failed checks."
+needs = ["implement"]
+metadata = { "gc.run_target" = "omg.build-worker" }
+
+[[steps]]
+id = "review-loop"
+title = "Review and fix {{source_id}} until approved"
+needs = ["document"]
+description = "Controller-owned iterative review scope. Only the runtime check may create another attempt; initial implementation is not repeated."
+
+[steps.check]
+max_attempts = 6
+
+[steps.check.check]
+mode = "exec"
+path = "../assets/checks/omg-review-approved.py"
+timeout = "2m"
+
+[[steps.children]]
+id = "review"
+title = "Review {{source_id}}"
+description = "Load skill omg-dev-review. Review this attempt's current code, tests and documentation without editing them; record a structured attempt-specific review artifact and its path on this bead."
+metadata = { "gc.run_target" = "omg.review-worker" }
+
+[[steps.children]]
+id = "synthesize-review"
+title = "Synthesize review for {{source_id}}"
+description = "Load skill omg-dev-synthesize. Read only this attempt's review bead and artifact; deduplicate findings, write a structured attempt-specific synthesis and record its path on this bead."
+needs = ["review"]
+metadata = { "gc.run_target" = "omg.review-worker" }
+
+[[steps.children]]
+id = "apply-fixes"
+title = "Apply review findings for {{source_id}}"
+description = "Load skill omg-dev-apply-fixes. Read the synthesis from the blocker of this attempt, apply only mandatory fixes and relevant tests, or record a no-op when approved. Record a fix summary linked to this attempt; do not repeat initial implementation."
+needs = ["synthesize-review"]
+metadata = { "gc.run_target" = "omg.build-worker" }
+
+[[steps]]
+id = "finalize"
+title = "Summarize reviewed development for {{source_id}}"
+needs = ["review-loop"]
+description = "Load skill omg-dev-finalize. Only after current review approval, summarize attempts, artifacts and remaining review/publishing work without closing the source or publishing."
+metadata = { "gc.run_target" = "omg.build-worker" }
