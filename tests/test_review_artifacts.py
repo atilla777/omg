@@ -21,6 +21,73 @@ def artifacts(worktree, source):
 
 
 class ReviewContractTests(unittest.TestCase):
+    def test_direct_review_fix_attempts_and_missing_legacy_synthesis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree = Path(tmp)
+            base = artifacts(worktree, "OMG-123")
+            root = {"id": "root", "metadata": {"gc.var.source_id": "OMG-123",
+                    "omg.workspace.path": tmp, "omg.workspace.source_id": "OMG-123",
+                    "omg.workspace.artifacts_root": str(base)}}
+            members = []
+            for attempt, verdict in ((1, "changes_required"), (2, "approved")):
+                directory = base / "review" / f"attempt-{attempt}"
+                directory.mkdir(parents=True)
+                review = {"id": f"review-{attempt}", "status": "closed", "metadata": {
+                    "gc.root_bead_id": "root", "gc.attempt": str(attempt),
+                    "gc.step_ref": f"review-loop.iteration.{attempt}.review", "gc.outcome": "pass",
+                    "omg.review.report_path": str(directory / "review.json"),
+                    "omg.review.markdown_path": str(directory / "review.md")}}
+                fix = {"id": f"fix-{attempt}", "status": "closed", "metadata": {
+                    "gc.root_bead_id": "root", "gc.attempt": str(attempt),
+                    "gc.step_ref": f"review-loop.iteration.{attempt}.apply-fixes", "gc.outcome": "pass",
+                    "omg.review.fix_path": str(directory / "fix.json")}}
+                members.extend((review, fix))
+                identity = {"attempt": attempt, "source_id": "OMG-123", "workflow_root_id": "root"}
+                (directory / "review.md").write_text("# Review\n")
+                (directory / "review.json").write_text(json.dumps({**identity, "schema": "omg.review.v2",
+                    "review_step_id": review["id"], "verdict": verdict,
+                    "findings": [] if attempt == 2 else [{"id": "F1"}],
+                    "required_fixes": [] if attempt == 2 else [{"finding_ids": ["F1"],
+                        "description": "Fix the failing behavior", "affected_files": ["src/code.py"]}],
+                    "markdown_report_path": str((directory / "review.md").relative_to(worktree)),
+                    "reviewed_files": {"src/code.py": "a" * 64}}))
+                (directory / "fix.json").write_text(json.dumps({**identity, "schema": "omg.review-fix.v2",
+                    "review_step_id": review["id"], "review_report_path": str((directory / "review.json").relative_to(worktree)),
+                    "fix_step_id": fix["id"], "status": "no_op" if attempt == 2 else "applied",
+                    "addressed_finding_ids": [] if attempt == 2 else ["F1"],
+                    "tests": [] if attempt == 2 else [{"outcome": "pass"}]}))
+
+            def read_json(args):
+                if "list" in args:
+                    return members
+                return [{"ctrl": {"metadata": {"gc.root_bead_id": "root"}}, "root": root}[args[4]]]
+
+            with patch.object(gate, "read_json", side_effect=read_json), patch.dict(os.environ, {
+                    "GC_STORE_PATH": tmp, "GC_BEAD_ID": "ctrl", "GC_ITERATION": "1"}):
+                self.assertEqual(gate.main(), 1)
+                with patch.dict(os.environ, {"GC_ITERATION": "2"}):
+                    self.assertEqual(gate.main(), 0)
+                    fix_report = base / "review/attempt-2/fix.json"
+                    data = json.loads(fix_report.read_text())
+                    data["review_report_path"] = ".omg/tasks/OMG-123/artifacts/review/attempt-1/review.json"
+                    fix_report.write_text(json.dumps(data))
+                    with self.assertRaises(ValueError):
+                        gate.main()
+                    data["review_report_path"] = str((base / "review/attempt-2/review.json").relative_to(worktree))
+                    fix_report.write_text(json.dumps(data))
+                    members.append({"id": "unexpected-synthesis", "status": "closed", "metadata": {
+                        "gc.root_bead_id": "root", "gc.attempt": "2",
+                        "gc.step_ref": "review-loop.iteration.2.synthesize-review", "gc.outcome": "pass"}})
+                    with self.assertRaises(ValueError):
+                        gate.main()
+                    members.pop()
+                    report_path = base / "review/attempt-2/review.json"
+                    report = json.loads(report_path.read_text())
+                    report["schema"] = "omg.review.v1"
+                    report_path.write_text(json.dumps(report))
+                    with self.assertRaises(ValueError):
+                        gate.main()
+
     def test_git_worktrees_isolate_ignored_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             rig = Path(tmp) / "rig"

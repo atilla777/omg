@@ -52,21 +52,14 @@ timeout = "2m"
 [[steps.children]]
 id = "review"
 title = "Review {{source_id}}"
-description = "Load skill omg-dev-review. Review this attempt's current code, tests and documentation without editing them; record a structured attempt-specific review artifact and its path on this bead."
-metadata = { "gc.run_target" = "omg.review-worker" }
-
-[[steps.children]]
-id = "synthesize-review"
-title = "Synthesize review for {{source_id}}"
-description = "Load skill omg-dev-synthesize. Read only this attempt's review bead and artifact; deduplicate findings, write a structured attempt-specific synthesis and record its path on this bead."
-needs = ["review"]
+description = "Load skill omg-dev-review. Review this attempt's current code, tests and documentation without editing them; record a structured verdict and actionable mandatory findings on this bead."
 metadata = { "gc.run_target" = "omg.review-worker" }
 
 [[steps.children]]
 id = "apply-fixes"
 title = "Apply review findings for {{source_id}}"
-description = "Load skill omg-dev-apply-fixes. Read the synthesis from the blocker of this attempt, apply only mandatory fixes and relevant tests, or record a no-op when approved. Record a fix summary linked to this attempt; do not repeat initial implementation."
-needs = ["synthesize-review"]
+description = "Load skill omg-dev-apply-fixes. Read the review from the blocker of this attempt, apply only mandatory fixes and relevant tests, or record a no-op when approved. Record a fix summary linked to this attempt; do not repeat initial implementation."
+needs = ["review"]
 metadata = { "gc.run_target" = "omg.build-worker" }
 
 [[steps]]

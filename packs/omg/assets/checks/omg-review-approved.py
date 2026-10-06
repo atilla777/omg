@@ -67,8 +67,9 @@ def main():
         return matched[0]
 
     review = member("review")
-    synthesis = member("synthesize-review")
     fix = member("apply-fixes")
+    # A v1 review requires synthesis, including runs with the newer local artifact root.
+    # v2 reviews feed fixes directly; the schema, not workspace age, selects the contract.
 
     def artifact(bead, key, schema, filename):
         path = Path(bead["metadata"][key])
@@ -80,7 +81,13 @@ def main():
             raise ValueError(f"invalid {schema} identity")
         return data
 
-    report = artifact(review, "omg.review.report_path", "omg.review.v1", "review.json")
+    review_path = Path(review["metadata"]["omg.review.report_path"])
+    if review_path != attempt_dir / "review.json" or review_path.resolve() != review_path or not review_path.is_file():
+        raise ValueError("review must be in this attempt's worktree directory")
+    schema = json.loads(review_path.read_text()).get("schema")
+    if schema not in ("omg.review.v1", "omg.review.v2"):
+        raise ValueError("unknown review schema")
+    report = artifact(review, "omg.review.report_path", schema, "review.json")
     if not legacy:
         markdown_path = attempt_dir / "review.md"
         if (Path(review["metadata"].get("omg.review.markdown_path", "")) != markdown_path
@@ -88,22 +95,57 @@ def main():
                 or report.get("markdown_report_path") != str(markdown_path.relative_to(worktree))
                 or not markdown_path.is_file() or not markdown_path.read_text().strip()):
             raise ValueError("missing or mismatched human-readable review report")
-    decision = artifact(synthesis, "omg.review.synthesis_path", "omg.review-synthesis.v1", "synthesis.json")
-    result = artifact(fix, "omg.review.fix_path", "omg.review-fix.v1", "fix.json")
-    review_path = review["metadata"]["omg.review.report_path"]
-    portable_review_path = (f"docs/tasks/{source_id}/review/attempt-{attempt}/review.json" if legacy else f".omg/tasks/{source_id}/artifacts/review/attempt-{attempt}/review.json")
-    if (report.get("review_step_id") != review["id"]
-            or decision.get("review_step_id") != review["id"]
-            or decision.get("synthesis_step_id") != synthesis["id"]
-            or decision.get("review_report_path") not in (review_path, portable_review_path)
-            or decision.get("verdict") != report.get("verdict")):
-        raise ValueError("synthesis does not match this attempt's review")
-    if (result.get("synthesis_step_id") != synthesis["id"]
-            or result.get("fix_step_id") != fix["id"]
-            or result.get("status") not in ("applied", "no_op")):
-        raise ValueError("fix does not reference this attempt's synthesis")
-    if decision.get("verdict") == "approved" and result["status"] == "no_op":
-        if report.get("findings") or decision.get("required_fixes"):
+    if report.get("review_step_id") != review["id"]:
+        raise ValueError("review does not match this attempt's bead")
+    if schema == "omg.review.v1":
+        synthesis = member("synthesize-review")
+        decision = artifact(synthesis, "omg.review.synthesis_path", "omg.review-synthesis.v1", "synthesis.json")
+        result = artifact(fix, "omg.review.fix_path", "omg.review-fix.v1", "fix.json")
+        portable_review_path = (f"docs/tasks/{source_id}/review/attempt-{attempt}/review.json" if legacy else f".omg/tasks/{source_id}/artifacts/review/attempt-{attempt}/review.json")
+        if (decision.get("review_step_id") != review["id"]
+                or decision.get("synthesis_step_id") != synthesis["id"]
+                or decision.get("review_report_path") not in (str(review_path), portable_review_path)
+                or decision.get("verdict") != report.get("verdict")):
+            raise ValueError("synthesis does not match this attempt's review")
+        if result.get("synthesis_step_id") != synthesis["id"]:
+            raise ValueError("fix does not reference this attempt's synthesis")
+        verdict = decision.get("verdict")
+        required = decision.get("required_fixes")
+    else:
+        if legacy:
+            raise ValueError("direct review requires a recorded artifacts root")
+        if any(item.get("metadata", {}).get("gc.root_bead_id") == root_id
+               and item["metadata"].get("gc.attempt") == attempt
+               and item["metadata"].get("gc.step_ref", "").endswith(f"review-loop.iteration.{attempt}.synthesize-review")
+               for item in members):
+            raise ValueError("v2 review cannot have a synthesis step")
+        result = artifact(fix, "omg.review.fix_path", "omg.review-fix.v2", "fix.json")
+        if (result.get("review_step_id") != review["id"]
+                or result.get("review_report_path") != str(review_path.relative_to(worktree))
+                or "synthesis_step_id" in result):
+            raise ValueError("fix does not reference this attempt's review")
+        verdict = report.get("verdict")
+        required = report.get("required_fixes")
+        findings = report.get("findings")
+        if (not isinstance(required, list) or not isinstance(findings, list)
+                or any(not isinstance(item, dict) for item in findings)
+                or any(not isinstance(item, dict) for item in required)):
+            raise ValueError("invalid review findings or required fixes")
+        finding_ids = [item.get("id") for item in findings]
+        if (not all(isinstance(fid, str) and fid for fid in finding_ids)
+                or len(set(finding_ids)) != len(finding_ids)
+                or any(not isinstance(item.get("finding_ids"), list) or not item["finding_ids"]
+                       or any(fid not in finding_ids for fid in item["finding_ids"])
+                       or not isinstance(item.get("description"), str) or not item["description"].strip()
+                       or not isinstance(item.get("affected_files"), list)
+                       or any(not isinstance(name, str) or not name or Path(name).is_absolute()
+                              or any(part in (".", "..") for part in Path(name).parts)
+                              for name in item["affected_files"]) for item in required)):
+            raise ValueError("invalid review findings or required fixes")
+    if result.get("fix_step_id") != fix["id"] or result.get("status") not in ("applied", "no_op"):
+        raise ValueError("fix does not match this attempt's bead")
+    if verdict == "approved" and result["status"] == "no_op":
+        if report.get("findings") or required:
             raise ValueError("approval still contains required findings")
         if not legacy:
             files = report.get("reviewed_files")
@@ -118,8 +160,7 @@ def main():
                 raise ValueError("approved review lacks a valid reviewed_files snapshot")
         print(f"review attempt {attempt} approved")
         return 0
-    if decision.get("verdict") == "changes_required" and result["status"] == "applied":
-        required = decision.get("required_fixes")
+    if verdict == "changes_required" and result["status"] == "applied":
         if not isinstance(required, list) or not required:
             raise ValueError("changes_required has no mandatory fixes")
         ids = {finding_id for item in required for finding_id in item["finding_ids"]}
