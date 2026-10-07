@@ -1,4 +1,4 @@
-"""Recorded Beads workspace and attempt paths used by the review gate."""
+"""The review gate decides only from the current attempt's Beads outcome."""
 
 import importlib.util
 import json
@@ -16,77 +16,58 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
 
-def artifacts(worktree, source):
-    return worktree / ".omg" / "tasks" / source / "artifacts"
+def step(name, attempt, value, *, root="root", outcome="pass", status="closed"):
+    key = "omg.review.verdict" if name == "review" else "omg.review.fix_status"
+    return {"id": f"{name}-{attempt}", "status": status, "metadata": {
+        "gc.root_bead_id": root, "gc.attempt": str(attempt),
+        "gc.step_ref": f"omg-development.review-loop.iteration.{attempt}.{name}",
+        "gc.outcome": outcome, key: value,
+        **({"omg.review.schema": "omg.review.v2"} if name == "review" else {})}}
 
 
-class ReviewContractTests(unittest.TestCase):
-    def test_direct_review_fix_attempts_and_missing_legacy_synthesis(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            worktree = Path(tmp)
-            base = artifacts(worktree, "OMG-123")
-            root = {"id": "root", "metadata": {"gc.var.source_id": "OMG-123",
-                    "omg.workspace.path": tmp, "omg.workspace.source_id": "OMG-123",
-                    "omg.workspace.artifacts_root": str(base)}}
-            members = []
-            for attempt, verdict in ((1, "changes_required"), (2, "approved")):
-                directory = base / "review" / f"attempt-{attempt}"
-                directory.mkdir(parents=True)
-                review = {"id": f"review-{attempt}", "status": "closed", "metadata": {
-                    "gc.root_bead_id": "root", "gc.attempt": str(attempt),
-                    "gc.step_ref": f"review-loop.iteration.{attempt}.review", "gc.outcome": "pass",
-                    "omg.review.report_path": str(directory / "review.json"),
-                    "omg.review.markdown_path": str(directory / "review.md")}}
-                fix = {"id": f"fix-{attempt}", "status": "closed", "metadata": {
-                    "gc.root_bead_id": "root", "gc.attempt": str(attempt),
-                    "gc.step_ref": f"review-loop.iteration.{attempt}.apply-fixes", "gc.outcome": "pass",
-                    "omg.review.fix_path": str(directory / "fix.json")}}
-                members.extend((review, fix))
-                identity = {"attempt": attempt, "source_id": "OMG-123", "workflow_root_id": "root"}
-                (directory / "review.md").write_text("# Review\n")
-                (directory / "review.json").write_text(json.dumps({**identity, "schema": "omg.review.v2",
-                    "review_step_id": review["id"], "verdict": verdict,
-                    "findings": [] if attempt == 2 else [{"id": "F1"}],
-                    "required_fixes": [] if attempt == 2 else [{"finding_ids": ["F1"],
-                        "description": "Fix the failing behavior", "affected_files": ["src/code.py"]}],
-                    "markdown_report_path": str((directory / "review.md").relative_to(worktree)),
-                    "reviewed_files": {"src/code.py": "a" * 64}}))
-                (directory / "fix.json").write_text(json.dumps({**identity, "schema": "omg.review-fix.v2",
-                    "review_step_id": review["id"], "review_report_path": str((directory / "review.json").relative_to(worktree)),
-                    "fix_step_id": fix["id"], "status": "no_op" if attempt == 2 else "applied",
-                    "addressed_finding_ids": [] if attempt == 2 else ["F1"],
-                    "tests": [] if attempt == 2 else [{"outcome": "pass"}]}))
+class ReviewGateTests(unittest.TestCase):
+    def run_gate(self, rows, attempt="1"):
+        def output(command, text):
+            if "show" in command:
+                return json.dumps([{"id": "control", "metadata": {"gc.root_bead_id": "root"}}])
+            self.assertEqual(command[command.index("--metadata-field") + 1], "gc.root_bead_id=root")
+            return json.dumps(rows)
 
-            def read_json(args):
-                if "list" in args:
-                    return members
-                return [{"ctrl": {"metadata": {"gc.root_bead_id": "root"}}, "root": root}[args[4]]]
+        with patch.object(gate.subprocess, "check_output", side_effect=output), patch.dict(os.environ, {
+                "GC_STORE_PATH": "/unused", "GC_BEAD_ID": "control", "GC_ITERATION": attempt}):
+            return gate.main()
 
-            with patch.object(gate, "read_json", side_effect=read_json), patch.dict(os.environ, {
-                    "GC_STORE_PATH": tmp, "GC_BEAD_ID": "ctrl", "GC_ITERATION": "1"}):
-                self.assertEqual(gate.main(), 1)
-                with patch.dict(os.environ, {"GC_ITERATION": "2"}):
-                    self.assertEqual(gate.main(), 0)
-                    fix_report = base / "review/attempt-2/fix.json"
-                    data = json.loads(fix_report.read_text())
-                    data["review_report_path"] = ".omg/tasks/OMG-123/artifacts/review/attempt-1/review.json"
-                    fix_report.write_text(json.dumps(data))
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    data["review_report_path"] = str((base / "review/attempt-2/review.json").relative_to(worktree))
-                    fix_report.write_text(json.dumps(data))
-                    members.append({"id": "unexpected-synthesis", "status": "closed", "metadata": {
-                        "gc.root_bead_id": "root", "gc.attempt": "2",
-                        "gc.step_ref": "review-loop.iteration.2.synthesize-review", "gc.outcome": "pass"}})
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    members.pop()
-                    report_path = base / "review/attempt-2/review.json"
-                    report = json.loads(report_path.read_text())
-                    report["schema"] = "omg.review.v1"
-                    report_path.write_text(json.dumps(report))
-                    with self.assertRaises(ValueError):
-                        gate.main()
+    def test_fixed_attempt_retries_then_latest_approved_attempt_passes(self):
+        rows = [step("review", 1, "changes_required"), step("apply-fixes", 1, "applied"),
+                step("review", 2, "approved"), step("apply-fixes", 2, "no_op")]
+        self.assertEqual(self.run_gate(rows), 1)
+        self.assertEqual(self.run_gate(rows, "2"), 0)
+
+    def test_wrong_attempt_root_or_step_cannot_approve(self):
+        rows = [step("review", 1, "approved"), step("apply-fixes", 2, "no_op")]
+        with self.assertRaises(ValueError):
+            self.run_gate(rows)
+        rows[1] = step("apply-fixes", 1, "no_op", root="other")
+        with self.assertRaises(ValueError):
+            self.run_gate(rows)
+        rows[1] = step("apply-fixes", 1, "no_op")
+        rows.append(step("review", 1, "approved"))
+        with self.assertRaises(ValueError):
+            self.run_gate(rows)
+
+    def test_incomplete_or_inconsistent_outcome_does_not_approve(self):
+        for rows in ([step("review", 1, "approved"), step("apply-fixes", 1, "applied")],
+                     [step("review", 1, "approved"), step("apply-fixes", 1, "no_op", status="open")],
+                     [step("review", 1, "approved", outcome="fail"), step("apply-fixes", 1, "no_op")],
+                     [step("review", 1, "approved"), step("apply-fixes", 1, None)]):
+            with self.subTest(rows=rows), self.assertRaises(ValueError):
+                self.run_gate(rows)
+
+    def test_v1_review_is_not_approved(self):
+        rows = [step("review", 1, "approved"), step("apply-fixes", 1, "no_op")]
+        rows[0]["metadata"]["omg.review.schema"] = "omg.review.v1"
+        with self.assertRaises(ValueError):
+            self.run_gate(rows)
 
     def test_git_worktrees_isolate_ignored_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -110,7 +91,7 @@ class ReviewContractTests(unittest.TestCase):
             for source in ("OMG-123", "OMG-124"):
                 worktree = Path(tmp) / source
                 git("worktree", "add", "-b", f"task/{source}", str(worktree), "main")
-                report = artifacts(worktree, source) / "review/attempt-1/review.json"
+                report = worktree / ".omg/tasks" / source / "artifacts/review/attempt-1/review.json"
                 report.parent.mkdir(parents=True)
                 report.write_text(source)
                 self.assertEqual(subprocess.run(["git", "-C", str(worktree), "check-ignore", "-q", str(report)]).returncode, 0)
@@ -119,155 +100,6 @@ class ReviewContractTests(unittest.TestCase):
                 paths.append(report)
             self.assertNotEqual(paths[0], paths[1])
             self.assertNotEqual(paths[0].read_text(), paths[1].read_text())
-
-    def test_two_attempts_and_exact_producer_links(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            worktree = Path(tmp)
-            source = "OMG-123"
-            root_id = "root-1"
-            base = artifacts(worktree, source)
-            root = {"id": root_id, "metadata": {"gc.var.source_id": source, "omg.workspace.path": tmp,
-                    "omg.workspace.source_id": source, "omg.workspace.artifacts_root": str(base)}}
-            control = {"metadata": {"gc.root_bead_id": root_id}}
-            members = []
-            for number, verdict in ((1, "changes_required"), (2, "approved")):
-                attempt_dir = base / "review" / f"attempt-{number}"
-                attempt_dir.mkdir(parents=True)
-                beads = {}
-                names = {"review": ("omg.review.report_path", "review.json"),
-                         "synthesize-review": ("omg.review.synthesis_path", "synthesis.json"),
-                         "apply-fixes": ("omg.review.fix_path", "fix.json")}
-                for step, (key, filename) in names.items():
-                    beads[step] = {"id": f"{step}-{number}", "status": "closed", "metadata": {
-                        "gc.root_bead_id": root_id, "gc.attempt": str(number),
-                        "gc.step_ref": f"review-loop.iteration.{number}.{step}", "gc.outcome": "pass",
-                        key: str(attempt_dir / filename)}}
-                    members.append(beads[step])
-                identity = {"attempt": number, "source_id": source, "workflow_root_id": root_id}
-                markdown = attempt_dir / "review.md"
-                markdown.write_text(f"# Review {number}\n")
-                beads["review"]["metadata"]["omg.review.markdown_path"] = str(markdown)
-                (attempt_dir / "review.json").write_text(json.dumps({**identity, "schema": "omg.review.v1",
-                    "review_step_id": beads["review"]["id"], "verdict": verdict,
-                    "findings": [] if number == 2 else [{"id": "F1"}],
-                    "markdown_report_path": str(markdown.relative_to(worktree)),
-                    "reviewed_files": {"src/code.py": "a" * 64}}))
-                (attempt_dir / "synthesis.json").write_text(json.dumps({**identity,
-                    "schema": "omg.review-synthesis.v1", "verdict": verdict,
-                    "review_step_id": beads["review"]["id"],
-                    "synthesis_step_id": beads["synthesize-review"]["id"],
-                    "review_report_path": str((attempt_dir / "review.json").relative_to(worktree)),
-                    "required_fixes": [] if number == 2 else [{"finding_ids": ["F1"]}]}))
-                (attempt_dir / "fix.json").write_text(json.dumps({**identity,
-                    "schema": "omg.review-fix.v1", "synthesis_step_id": beads["synthesize-review"]["id"],
-                    "fix_step_id": beads["apply-fixes"]["id"],
-                    "status": "no_op" if number == 2 else "applied",
-                    "addressed_finding_ids": [] if number == 2 else ["F1"],
-                    "tests": [] if number == 2 else [{"outcome": "pass"}]}))
-
-            def read_json(args):
-                if "list" in args:
-                    return members
-                return [{"control-1": control, root_id: root}[args[4]]]
-
-            with patch.object(gate, "read_json", side_effect=read_json), patch.dict(os.environ, {
-                    "GC_STORE_PATH": tmp, "GC_BEAD_ID": "control-1", "GC_ITERATION": "1"}):
-                self.assertEqual(gate.main(), 1)
-                with patch.dict(os.environ, {"GC_ITERATION": "2"}):
-                    self.assertEqual(gate.main(), 0)
-                    members[3]["metadata"]["omg.review.report_path"] = str(base / "review/attempt-1/review.json")
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    members[3]["metadata"]["omg.review.report_path"] = str(base / "review/attempt-2/review.json")
-                    root["metadata"]["omg.workspace.source_id"] = "OMG-124"
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    root["metadata"]["omg.workspace.source_id"] = source
-                    root["metadata"]["omg.workspace.artifacts_root"] = str(artifacts(worktree, "OMG-124"))
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    root["metadata"]["omg.workspace.artifacts_root"] = str(base)
-                    members[3]["metadata"]["omg.review.markdown_path"] = str(base / "review/attempt-1/review.md")
-                    with self.assertRaises(ValueError):
-                        gate.main()
-                    members[3]["metadata"]["omg.review.markdown_path"] = str(base / "review/attempt-2/review.md")
-                    del root["metadata"]["omg.workspace.artifacts_root"]
-                    # Missing metadata is supported only for a genuinely legacy workflow.
-                    with self.assertRaises(ValueError):
-                        gate.main()
-
-    def test_symlink_and_parent_escape_are_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
-            worktree = Path(tmp)
-            source = "OMG-123"
-            root = {"metadata": {"gc.var.source_id": source, "omg.workspace.path": tmp,
-                    "omg.workspace.source_id": source, "omg.workspace.artifacts_root": str(artifacts(worktree, source))}}
-            control = {"metadata": {"gc.root_bead_id": "root"}}
-
-            def read_json(args):
-                return [{"control": control, "root": root}[args[4]]]
-
-            with patch.object(gate, "read_json", side_effect=read_json), patch.dict(os.environ, {
-                    "GC_STORE_PATH": tmp, "GC_BEAD_ID": "control", "GC_ITERATION": "1"}):
-                root["metadata"]["omg.workspace.artifacts_root"] = str(worktree / ".." / "elsewhere")
-                with self.assertRaises(ValueError):
-                    gate.main()
-                task_dir = worktree / ".omg/tasks" / source
-                task_dir.mkdir(parents=True)
-                (task_dir / "artifacts").symlink_to(outside, target_is_directory=True)
-                root["metadata"]["omg.workspace.artifacts_root"] = str(artifacts(worktree, source))
-                with self.assertRaises(ValueError):
-                    gate.main()
-                (task_dir / "artifacts").unlink()
-                attempt_dir = artifacts(worktree, source) / "review/attempt-1"
-                attempt_dir.mkdir(parents=True)
-                (attempt_dir / "review.json").symlink_to(Path(outside) / "report.json")
-                (Path(outside) / "report.json").write_text("{}")
-                members = [{"id": step, "status": "closed", "metadata": {
-                    "gc.root_bead_id": "root", "gc.attempt": "1",
-                    "gc.step_ref": f"review-loop.iteration.1.{step}", "gc.outcome": "pass",
-                    key: str(attempt_dir / name)}} for step, key, name in (
-                        ("review", "omg.review.report_path", "review.json"),
-                        ("synthesize-review", "omg.review.synthesis_path", "synthesis.json"),
-                        ("apply-fixes", "omg.review.fix_path", "fix.json"))]
-
-                def read_with_members(args):
-                    if "list" in args:
-                        return members
-                    return read_json(args)
-
-                with patch.object(gate, "read_json", side_effect=read_with_members), self.assertRaises(ValueError):
-                    gate.main()
-
-    def test_legacy_review_directory_remains_readable(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            attempt_dir = Path(tmp) / "docs/tasks/OMG-123/review/attempt-1"
-            attempt_dir.mkdir(parents=True)
-            root = {"id": "root", "metadata": {"gc.var.source_id": "OMG-123", "omg.workspace.path": tmp}}
-            keys = (("review", "omg.review.report_path", "review.json"),
-                    ("synthesize-review", "omg.review.synthesis_path", "synthesis.json"),
-                    ("apply-fixes", "omg.review.fix_path", "fix.json"))
-            members = [{"id": name, "status": "closed", "metadata": {
-                "gc.root_bead_id": "root", "gc.attempt": "1", "gc.step_ref": f"review-loop.iteration.1.{name}",
-                "gc.outcome": "pass", key: str(attempt_dir / filename)}} for name, key, filename in keys]
-            identity = {"attempt": 1, "source_id": "OMG-123", "workflow_root_id": "root"}
-            (attempt_dir / "review.json").write_text(json.dumps({**identity, "schema": "omg.review.v1",
-                "review_step_id": "review", "verdict": "approved", "findings": []}))
-            (attempt_dir / "synthesis.json").write_text(json.dumps({**identity,
-                "schema": "omg.review-synthesis.v1", "review_step_id": "review", "synthesis_step_id": "synthesize-review",
-                "review_report_path": "docs/tasks/OMG-123/review/attempt-1/review.json",
-                "verdict": "approved", "required_fixes": []}))
-            (attempt_dir / "fix.json").write_text(json.dumps({**identity, "schema": "omg.review-fix.v1",
-                "synthesis_step_id": "synthesize-review", "fix_step_id": "apply-fixes", "status": "no_op"}))
-
-            def read_json(args):
-                if "list" in args:
-                    return members
-                return [{"ctrl": {"metadata": {"gc.root_bead_id": "root"}}, "root": root}[args[4]]]
-
-            with patch.object(gate, "read_json", side_effect=read_json), patch.dict(os.environ, {
-                    "GC_STORE_PATH": tmp, "GC_BEAD_ID": "ctrl", "GC_ITERATION": "1"}):
-                self.assertEqual(gate.main(), 0)
 
 
 if __name__ == "__main__":
