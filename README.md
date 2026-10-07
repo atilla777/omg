@@ -2,7 +2,7 @@
 
 OMG is a [Gas City](https://github.com/gastownhall/gascity) pack for three core software development processes:
 
-1. **Define requirements** — discuss a feature with an agent, approve its specification, and save it in `docs/requirements/` of the selected project (rig). Optionally, approve a separate breakdown into an epic and Beads tasks. Saving requirements does not start implementation.
+1. **Define requirements** — discuss a feature with an agent and approve its specification. OMG saves it in the selected project's (rig's) `docs/requirements/` and publishes the approved change directly to `origin/main` without a second approval. A separate breakdown into an epic and Beads tasks needs its own approval. If publication fails, the file remains local and development does not start from it. Saving and publishing requirements do not start implementation.
 2. **Implement requirements (features)** — explicitly start an approved `omg-development` task. The [v2 formula](packs/omg/formulas/omg-development.toml) prepares a worktree, plans and implements the change, runs tests, updates documentation, reviews and fixes the result, and publishes directly to `origin/main` after approval. The formula describes the method; applying it creates a Beads workflow.
 3. **Fix bugs** — a planned core process. OMG can record `omg-bugfix` tasks, but does not yet provide a bug-fix formula or support launching them.
 
@@ -78,4 +78,4 @@ These instructions target the tested `gc 1.5.0` configuration with OpenCode and 
    gc --city ~/omg-city session attach omg.orchestrator
    ```
 
-   You can also use the orchestrator terminal in Herdr. Ask it to select your rig and define a feature's requirements; task decomposition and workflow launch require separate approval. For installation details and known limits, see [pack contracts](docs/pack-contracts.md).
+   You can also use the orchestrator terminal in Herdr. Ask it to select your rig and define a feature's requirements; approval publishes the specification to `origin/main`, while task decomposition and workflow launch require separate approval. For installation details and known limits, see [pack contracts](docs/pack-contracts.md).
