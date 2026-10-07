@@ -12,7 +12,7 @@ required = true
 id = "prepare"
 title = "Prepare development workspace for {{source_id}}"
 description = "Load skill omg-dev-prepare. Resolve the selected rig and verify the source bead {{source_id}} and this workflow; prepare its dedicated branch, worktree and artifact directory. Record the resolved paths on this step. Stop open on ambiguity or failure."
-metadata = { "gc.run_target" = "omg.plan-worker" }
+metadata = { "gc.run_target" = "omg.prepare-worker" }
 
 [[steps]]
 id = "plan"
@@ -33,7 +33,7 @@ id = "document"
 title = "Update documentation for {{source_id}}"
 description = "Load skill omg-dev-document. Read the previous step results and artifacts from this workflow; update project documentation for the implemented behavior and record the result on this step. Stop open on missing inputs or failed checks."
 needs = ["implement"]
-metadata = { "gc.run_target" = "omg.build-worker" }
+metadata = { "gc.run_target" = "omg.document-worker" }
 
 [[steps]]
 id = "review-loop"

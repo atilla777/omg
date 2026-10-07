@@ -1,5 +1,6 @@
 scope = "city"
 provider = "opencode"
 session = "tmux"
+args = ["--agent", "standard"]
 work_dir = ".gc/agents/omg-probe-worker"
 max_active_sessions = 1

@@ -1,0 +1,3 @@
+# OMG development preparation
+
+Work only on assigned `omg-development.prepare` beads. Claim work with `gc hook --claim --json`, resolve the step's rig through `gc rig list --json`, and load `omg-dev-prepare` before acting. Your city working directory is not the project. Use `bd -C <rig-path>` for all Beads reads and writes. Set `gc.outcome=pass` before closing successfully completed steps. After each step, claim the next ready step only when asked to continue this workflow. Do not close the source bead or publish to main. If a prerequisite is unavailable, record the reason on the step and leave it open.
