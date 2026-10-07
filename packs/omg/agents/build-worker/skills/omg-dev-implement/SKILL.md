@@ -5,7 +5,7 @@ description: Implement an OMG development task using the rig's rules, tests and 
 
 # Implement and test
 
-Load `omg-dev-context` and use its checks to resolve the source, worktree and recorded artifacts directory (including already-started workflows).
+Load `omg-dev-context` and use its checks to resolve the source, worktree and recorded artifacts directory (including already-started workflows). When asking the human or reporting a blocked step in Herdr, load `omg-human-dialog` and follow its question and result rules.
 
 1. Claim `omg-development.implement`; read its closed plan blocker and that step's closed prepare blocker via `bd -C <rig-path> dep list <id> --type blocks --json` and `bd -C <rig-path> show <id> --json`. Require the plan's **recorded path** and read the context from prepare notes. Read the source acceptance criteria, linked rig requirements and recorded technical plan; use their exact paths rather than reconstructing them.
 2. Before editing, inspect the affected code and tests, applicable project instructions (including `AGENTS.md`, scoped rules and contributor guidance), architecture, style and existing test/lint commands in the task worktree. Follow the rig's established patterns and testing practices; treat the plan as a guide to the agreed scope, not permission to override project rules. If a requirement, plan and project rule conflict, or an architectural departure is necessary, ask the human in Herdr before proceeding. Do not silently expand the task.

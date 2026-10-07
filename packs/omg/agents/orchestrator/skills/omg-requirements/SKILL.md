@@ -5,7 +5,7 @@ description: Use when interviewing a user about feature behavior, agreeing, savi
 
 # OMG feature requirements
 
-This skill handles feature behavior, not implementation planning, Beads or formula execution. Speak in the user's language. The agreed specification in the rig is the durable source of truth for development; do not rely on the current conversation surviving.
+This skill handles feature behavior, not implementation planning, Beads or formula execution. Load `omg-human-dialog` for questions and results. The agreed specification in the rig is the durable source of truth for development; do not rely on the current conversation surviving.
 
 ## Select the rig and document
 

@@ -5,7 +5,7 @@ description: Plan and create a feature epic and typed source subtasks in Beads f
 
 # OMG feature decomposition
 
-Use this skill only when the user asks to turn a saved, agreed feature specification into Beads work. Speak in the user's language. Load `omg-requirements` to select the rig and find/read the specification, and `omg-gc` for the Beads operations. The city working directory is not the project rig.
+Use this skill only when the user asks to turn a saved, agreed feature specification into Beads work. Load `omg-human-dialog` for questions and results, `omg-requirements` to select the rig and find/read the specification, and `omg-gc` for the Beads operations. The city working directory is not the project rig.
 
 ## Prepare the plan
 

@@ -5,7 +5,7 @@ description: Synthesize findings from the current iteration of an OMG developmen
 
 # Synthesize one review attempt
 
-Load `omg-dev-context` and `omg-dev-review-attempt` and follow both shared contracts before reading or writing an attempt artifact.
+Load `omg-dev-context` and `omg-dev-review-attempt` and follow both shared contracts before reading or writing an attempt artifact. When asking the human or reporting a blocked step in Herdr, load `omg-human-dialog` and follow its question and result rules.
 
 Only for already-created workflows with a `synthesize-review` bead; new workflows use the direct review → fix contract.
 

@@ -5,7 +5,7 @@ description: Review one development attempt against the task requirements and th
 
 # Review one attempt
 
-Load `omg-dev-context` and `omg-dev-review-attempt` and follow both shared contracts before reading or writing an attempt artifact.
+Load `omg-dev-context` and `omg-dev-review-attempt` and follow both shared contracts before reading or writing an attempt artifact. When asking the human or reporting a blocked step in Herdr, load `omg-human-dialog` and follow its question and result rules.
 
 Claim the assigned review bead. Read the original source bead, its acceptance criteria and linked rig requirements, and the closed prepare/plan/implement/document beads for this root. Follow their recorded paths to the prepared context, technical plan, `test-results.md` and `documentation-result.md`; verify identities and actual contents rather than relying on bead summaries. Inspect the task worktree's actual changes, including untracked files and deletions, and the relevant surrounding code and tests. Do not edit the implementation or documentation.
 

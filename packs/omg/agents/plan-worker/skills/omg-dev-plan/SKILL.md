@@ -5,7 +5,7 @@ description: Write a technical plan for an OMG development task in its prepared 
 
 # Plan implementation
 
-Load `omg-dev-context` and use its checks to resolve the source, worktree and recorded artifacts directory (including already-started workflows).
+Load `omg-dev-context` and use its checks to resolve the source, worktree and recorded artifacts directory (including already-started workflows). When asking the human or reporting a blocked step in Herdr, load `omg-human-dialog` and follow its question and result rules.
 
 1. Claim `omg-development.plan` and inspect its closed prepare blocker through `bd -C <rig-path> dep list <step-id> --type blocks --json`. Verify the recorded `context.md` and branch.
 2. Read source acceptance criteria and its linked rig requirements (if any). Write `implementation-plan.md` in the validated artifacts directory. Write the intended changes, rig-relative affected files, decisions, test commands and expected outcomes, and coverage of each criterion. Do not implement here. Ask the human in Herdr if blocked.
