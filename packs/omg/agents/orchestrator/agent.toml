@@ -3,4 +3,5 @@ provider = "opencode"
 session = "tmux"
 args = ["--agent", "advanced"]
 work_dir = ".gc/agents/omg-orchestrator"
+overlay_dir = "assets/overlays/orchestrator"
 max_active_sessions = 1
